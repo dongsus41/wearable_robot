@@ -66,9 +66,16 @@ source ~/.bashrc
 ### CAN 인터페이스 설정
 
 ```bash
-sudo ip link set down can0
-sudo ip link set can0 type can bitrate 1000000
-sudo ip link set up can0
+sudo modprobe can
+sudo modprobe can_raw
+sudo modprobe mttcan
+
+sudo ip link set can0 type can bitrate 1000000 dbitrate 1000000 berr-reporting on fd on restart-ms 100
+sudo ifconfig can0 txqueuelen 1000
+
+sudo ip link set can0 down
+sudo ip link set can0 up
+
 ```
 
 ### 전체 시스템 실행
@@ -103,6 +110,4 @@ src/
 - **CAN 통신 오류**: CAN 인터페이스가 올바르게 설정되었는지 확인하세요. `candump can0`으로 CAN 메시지를 확인할 수 있습니다.
 - **빌드 오류**: 특정 패키지에 문제가 있다면 `colcon build --symlink-install --packages-select <패키지_이름>`으로 해당 패키지만 다시 빌드하세요.
 
-## 라이선스
 
-이 프로젝트는 [라이선스 종류] 하에 배포됩니다.
