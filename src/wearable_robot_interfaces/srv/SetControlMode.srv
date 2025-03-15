@@ -1,0 +1,7 @@
+# 요청 (request)
+bool auto_mode       # true: 자동 모드, false: 수동 모드
+int32 actuator_id    # 제어할 구동기 ID (-1: 모든 구동기)
+---
+# Response
+bool success
+string message

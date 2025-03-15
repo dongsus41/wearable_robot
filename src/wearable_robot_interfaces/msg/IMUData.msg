@@ -1,0 +1,6 @@
+std_msgs/Header header
+wearable_robot_interfaces/IMUType imu1
+wearable_robot_interfaces/IMUType imu2
+wearable_robot_interfaces/IMUType imu3
+wearable_robot_interfaces/IMUType imu4
+

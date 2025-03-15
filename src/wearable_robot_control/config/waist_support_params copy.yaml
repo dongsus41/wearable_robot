@@ -1,0 +1,24 @@
+waist_actuator_control_node:
+  ros__parameters:
+    # 제어 대상 설정
+    actuator_ids: [4, 5]         # 제어할 구동기 번호 목록
+    target_temperature: 50.0     # 목표 온도 (섭씨)
+    can_interface: "can0"        # CAN 인터페이스 이름
+
+    # 4번 구동기 PI 제어기 파라미터
+    actuator4:
+      kp: 2.0                    # 비례 게인
+      ki: 0.1                    # 적분 게인
+
+    # 5번 구동기 PI 제어기 파라미터
+    actuator5:
+      kp: 2.0                    # 비례 게인
+      ki: 0.1                    # 적분 게인
+
+    # 출력 제한 설정
+    max_pwm: 60.0               # 최대 PWM 출력 (0-100)
+    min_pwm: 0.0                 # 최소 PWM 출력 (0-100)
+
+    # 제어 안전 장치
+    safety_threshold: 80.0       # 안전 온도 임계값 (섭씨)
+    control_frequency: 250.0     # 제어 주파수 (Hz)

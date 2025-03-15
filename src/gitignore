@@ -1,0 +1,24 @@
+# ROS2 관련 무시 항목
+build/
+install/
+log/
+.build_file
+
+# 컴파일 결과물
+*.o
+*.a
+*.so
+*.dll
+*.dylib
+*.pyc
+__pycache__/
+
+# IDE 관련 파일
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 운영체제 관련 파일
+.DS_Store
+Thumbs.db

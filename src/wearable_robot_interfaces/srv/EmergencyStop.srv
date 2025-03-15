@@ -1,0 +1,6 @@
+# 요청 (request)
+bool activate  # true: 비상 정지 활성화, false: 비상 정지 해제
+---
+# 응답 (response)
+bool success
+string message
