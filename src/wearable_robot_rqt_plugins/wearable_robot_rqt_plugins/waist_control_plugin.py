@@ -242,7 +242,7 @@ class WaistControlPlugin(Plugin):
             self.displacement_plot_widget.showGrid(x=True, y=True, alpha=0.3)
 
             # 변위 센서 Y축 범위 설정 (0 ~ 30)
-            self.displacement_plot_widget.setYRange(0, 30, padding=0.05)
+            self.displacement_plot_widget.setYRange(0, 5, padding=0.05)
 
             # 사용자 확대/축소 활성화
             self.displacement_plot_widget.setMouseEnabled(x=True, y=True)
@@ -251,9 +251,9 @@ class WaistControlPlugin(Plugin):
             self.displacement_line = self.displacement_plot_widget.plot(
                 pen=pg.mkPen(color=(0, 150, 0), width=2),  # 녹색
                 name="변위 센서 값",
-                symbol='o',
-                symbolSize=4,
-                symbolBrush=(0, 150, 0)
+                # symbol='o',
+                # symbolSize=4,
+                # symbolBrush=(0, 150, 0)
             )
 
             # 임계값 라인 추가
@@ -263,7 +263,7 @@ class WaistControlPlugin(Plugin):
             )
 
             # 변위 센서 그래프 범례 추가
-            displacement_legend = pg.LegendItem(offset=(30, 20))
+            displacement_legend = pg.LegendItem(offset=(60, 40))
             displacement_legend.setParentItem(self.displacement_plot_widget.graphicsItem())
             displacement_legend.addItem(self.displacement_line, "변위 센서 값")
             displacement_legend.addItem(self.threshold_line, "임계값")
@@ -296,16 +296,16 @@ class WaistControlPlugin(Plugin):
             self.temp_line_4 = self.temp_plot_widget.plot(
                 pen=pg.mkPen(color=(0, 128, 255), width=2),  # 파란색 계열
                 name="구동기 4 온도",
-                symbol='o',
-                symbolSize=4,
-                symbolBrush=(0, 128, 255)
+                # symbol='o',
+                # symbolSize=4,
+                # symbolBrush=(0, 128, 255)
             )
             self.temp_line_5 = self.temp_plot_widget.plot(
                 pen=pg.mkPen(color=(255, 0, 0), width=2),    # 빨간색
                 name="구동기 5 온도",
-                symbol='o',
-                symbolSize=4,
-                symbolBrush=(255, 0, 0)
+                # symbol='o',
+                # symbolSize=4,
+                # symbolBrush=(255, 0, 0)
             )
             self.target_temp_line = self.temp_plot_widget.plot(
                 pen=pg.mkPen(color=(0, 0, 0), width=2, style=Qt.DashLine),  # 검은색 점선
@@ -313,7 +313,7 @@ class WaistControlPlugin(Plugin):
             )
 
             # 범례 추가
-            self.temp_legend = pg.LegendItem(offset=(30, 20))
+            self.temp_legend = pg.LegendItem(offset=(60, 40))
             self.temp_legend.setParentItem(self.temp_plot_widget.graphicsItem())
             self.temp_legend.addItem(self.temp_line_4, "구동기 4 온도")
             self.temp_legend.addItem(self.temp_line_5, "구동기 5 온도")
@@ -337,20 +337,20 @@ class WaistControlPlugin(Plugin):
             self.pwm_line_4 = self.pwm_plot_widget.plot(
                 pen=pg.mkPen(color=(0, 128, 255), width=2),  # 파란색 계열
                 name="구동기 4 PWM",
-                symbol='o',
-                symbolSize=4,
-                symbolBrush=(0, 128, 255)
+                # symbol='o',
+                # symbolSize=4,
+                # symbolBrush=(0, 128, 255)
             )
             self.pwm_line_5 = self.pwm_plot_widget.plot(
                 pen=pg.mkPen(color=(255, 0, 0), width=2),    # 빨간색
                 name="구동기 5 PWM",
-                symbol='o',
-                symbolSize=4,
-                symbolBrush=(255, 0, 0)
+                # symbol='o',
+                # symbolSize=4,
+                # symbolBrush=(255, 0, 0)
             )
 
             # PWM 범례 추가
-            pwm_legend = pg.LegendItem(offset=(30, 20))
+            pwm_legend = pg.LegendItem(offset=(60, 40))
             pwm_legend.setParentItem(self.pwm_plot_widget.graphicsItem())
             pwm_legend.addItem(self.pwm_line_4, "구동기 4 PWM")
             pwm_legend.addItem(self.pwm_line_5, "구동기 5 PWM")
@@ -408,13 +408,13 @@ class WaistControlPlugin(Plugin):
 
         try:
             # 변위 센서 값 표시
-            self._widget.displacement_label.setText(f"{self.displacement:.1f}")
+            self._widget.displacement_label.setText(f"{self.displacement:.2f}")
 
             # 구동기 4, 5번 온도와 PWM 값 업데이트
             if len(self.temperatures) > 4:
-                self._widget.temp_label_4.setText(f"{self.temperatures[4]:.1f}°C")
+                self._widget.temp_label_4.setText(f"{self.temperatures[4]:.2f}°C")
             if len(self.temperatures) > 5:
-                self._widget.temp_label_5.setText(f"{self.temperatures[5]:.1f}°C")
+                self._widget.temp_label_5.setText(f"{self.temperatures[5]:.2f}°C")
 
             if len(self.pwm_values) > 4:
                 self._widget.pwm_label_4.setText(f"PWM: {self.pwm_values[4]}")
@@ -649,7 +649,7 @@ class WaistControlPlugin(Plugin):
 
                     # 로그 출력
                     if len(self.time_data) % 1000 == 0:  # 1000개마다 로그 출력
-                        self.node.get_logger().info(f"데이터 개수: {len(self.time_data)}, 시간 범위: {elapsed_time - self.time_data[0]:.1f}초")
+                        self.node.get_logger().info(f"데이터 개수: {len(self.time_data)}, 시간 범위: {elapsed_time - self.time_data[0]:.2f}초")
         except Exception as e:
             import traceback
             self.node.get_logger().error(f'온도 데이터 처리 오류: {str(e)}')
@@ -677,7 +677,7 @@ class WaistControlPlugin(Plugin):
             if len(msg.displacement) > 0:
                 # 0번 센서 사용 (변위 센서 인덱스는 UI에서 설정 불필요)
                 self.displacement = msg.displacement[0]
-                self.node.get_logger().debug(f'허리 변위 센서: {self.displacement:.1f}')
+                self.node.get_logger().debug(f'허리 변위 센서: {self.displacement:.3f}')
 
                 # 그래프 데이터 수집 (그래프 활성화 상태일 때만)
                 if self.is_plotting and hasattr(self, 'start_time') and self.start_time is not None:
@@ -742,7 +742,7 @@ class WaistControlPlugin(Plugin):
         허리 각도 임계값 업데이트
         """
         self.angle_threshold = value
-        self.node.get_logger().info(f'허리 임계값이 {value:.1f}로 변경되었습니다')
+        self.node.get_logger().info(f'허리 임계값이 {value:.2f}로 변경되었습니다')
 
     def start_plotting(self):
         """
@@ -867,7 +867,7 @@ class WaistControlPlugin(Plugin):
         # 어느 하나라도 임계값을 초과하면 비상 정지
         if (temp_4 >= self.safety_temp_threshold or temp_5 >= self.safety_temp_threshold) and not self.is_emergency_stop:
             self.node.get_logger().error(
-                f'온도 임계값 초과! 구동기 4번: {temp_4:.1f}°C, 구동기 5번: {temp_5:.1f}°C, 임계값: {self.safety_temp_threshold:.1f}°C')
+                f'온도 임계값 초과! 구동기 4번: {temp_4:.2f}°C, 구동기 5번: {temp_5:.2f}°C, 임계값: {self.safety_temp_threshold:.2f}°C')
 
             # 비상 정지 활성화
             self.is_emergency_stop = True
@@ -894,9 +894,9 @@ class WaistControlPlugin(Plugin):
         warning_msg.setIcon(QMessageBox.Warning)
         warning_msg.setWindowTitle("온도 경고")
         warning_msg.setText("구동기 온도가 안전 임계값을 초과했습니다!")
-        warning_msg.setInformativeText(f"구동기 4번: {temp_4:.1f}°C\n"
-                                       f"구동기 5번: {temp_5:.1f}°C\n"
-                                       f"임계값: {self.safety_temp_threshold:.1f}°C\n\n"
+        warning_msg.setInformativeText(f"구동기 4번: {temp_4:.2f}°C\n"
+                                       f"구동기 5번: {temp_5:.2f}°C\n"
+                                       f"임계값: {self.safety_temp_threshold:.2f}°C\n\n"
                                        f"비상 정지가 활성화되었습니다.")
         warning_msg.setStandardButtons(QMessageBox.Ok)
         warning_msg.exec_()
@@ -916,8 +916,8 @@ class WaistControlPlugin(Plugin):
             threshold_value = self._widget.angle_threshold_spin.value()
             self.angle_threshold = threshold_value
 
-            self._widget.status_label.setText(f'목표 온도 {target_temp:.1f}°C, 임계값 {threshold_value:.1f}로 설정')
-            self.node.get_logger().info(f'설정 적용: 목표 온도={target_temp:.1f}°C, 임계값={threshold_value:.1f}')
+            self._widget.status_label.setText(f'목표 온도 {target_temp:.2f}°C, 임계값 {threshold_value:.2f}로 설정')
+            self.node.get_logger().info(f'설정 적용: 목표 온도={target_temp:.2f}°C, 임계값={threshold_value:.2f}')
         except Exception as e:
             self.node.get_logger().error(f'설정 적용 오류: {str(e)}')
             self._widget.status_label.setText(f'설정 적용 오류: {str(e)}')
@@ -931,7 +931,7 @@ class WaistControlPlugin(Plugin):
             msg = std_msgs.msg.Float64()
             msg.data = float(target_temp)
             self.target_temp_pub.publish(msg)
-            self.node.get_logger().info(f'목표 온도 설정 메시지 발행: {target_temp:.1f}°C')
+            self.node.get_logger().info(f'목표 온도 설정 메시지 발행: {target_temp:.2f}°C')
         except Exception as e:
             self.node.get_logger().error(f'목표 온도 발행 오류: {str(e)}')
 
@@ -1016,9 +1016,9 @@ class WaistControlPlugin(Plugin):
             else:
                 # 녹화 시작
                 # 파일명에 날짜/시간 추가
-                base_name = self._widget.filename_edit.text()
-                if not base_name:
-                    base_name = "waist_robot"
+                base_name = 'wearable_robot '
+                # if not base_name:
+                #     base_name = "waist_robot"
 
                 timestamp = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
                 output_dir = os.path.expanduser(f"~/ros2_bags/{base_name}_{timestamp}")
