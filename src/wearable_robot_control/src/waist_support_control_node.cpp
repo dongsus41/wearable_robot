@@ -197,7 +197,16 @@ private:
     {
         auto temp_msg = wearable_robot_interfaces::msg::TemperatureData();
         temp_msg.header.stamp = this->now();
-        temp_msg.temperature = target_temp_values_;
+        temp_msg.temperature.resize(6, 0.0);
+
+        if (previous_active_state_) {
+            temp_msg.temperature[0] = target_temperature_;
+        }
+
+        for (int i = 0; i < NUM_ACTUATORS; i++) {
+            int idx = actuator_indices_[i];
+            temp_msg.temperature[idx] = previous_active_state_ ? target_temperature_ : 0.0;
+        }
 
         // 메시지 발행
         target_temp_publisher_->publish(temp_msg);

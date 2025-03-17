@@ -106,7 +106,7 @@ def generate_launch_description():
     wasit_control_node = Node(
         package= 'wearable_robot_control',
         executable='waist_support_control_node',
-        name='actuator_support_node',
+        name='waist_support_control_node',
         parameters=[waist_control_config],
         output='screen'
     )
@@ -134,7 +134,7 @@ def generate_launch_description():
     gui_node = Node(
         package= 'wearable_robot_rqt_plugins',
         executable='waist_control_plugin',
-        name='waist_control_plugin',
+        name='waist_control_plugin_launch',
         output='screen',
         on_exit=Shutdown()
     )

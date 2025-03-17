@@ -51,7 +51,9 @@ class WaistControlPlugin(Plugin):
         self.is_emergency_stop = False      # 비상 정지 상태
         self.safety_temp_threshold = 80.0   # 안전 온도 임계값 (°C)
         self.recording_process = None
-        self.angle_threshold = 3.0          # 허리 각도 임계값
+        self.applied_angle_threshold = 2.0  # 허리 각도 임계값
+        self.applied_target_temp = 60.0     # 기본 목표 온도
+        self.is_active = False
 
         # 그래프 관련 객체 초기화
         self.displacement_plot_widget = None
@@ -121,6 +123,9 @@ class WaistControlPlugin(Plugin):
         # 주기적인 작업을 위한 타이머 (20ms 마다 안전 검사 및 상태 체크)
         self.timer = self.node.create_timer(0.02, self.check_state)
 
+        # 그래프 데이터 수집 타이머 (50Hz, 20ms 간격)
+        self.data_collection_timer = self.node.create_timer(0.02, self.collect_data_for_graph)
+
         self._shutdown_flag = False
 
         # ROS 2 스핀을 위한 스레드 생성
@@ -135,27 +140,7 @@ class WaistControlPlugin(Plugin):
         self._widget = QWidget()
 
         # UI 파일 경로를 찾기 위한 여러 가능한 위치를 시도
-
         ui_file = os.path.expanduser("~/wearable_robot_ws/src/wearable_robot_rqt_plugins/resource/waist_control.ui")
-
-        # candidate_paths = [
-        #     # 1. 패키지 설치 경로 내 resource 디렉토리
-        #     os.path.join(os.path.dirname(os.path.realpath(__file__)), 'resource', 'waist_control.ui'),
-        #     # 2. 현재 디렉토리의 상위 디렉토리의 resource
-        #     os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'resource', 'waist_control.ui'),
-        #     # 3. 공유 리소스 디렉토리 (ROS 2 표준)
-        #     os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'share',
-        #                 'wearable_robot_rqt_plugins', 'resource', 'waist_control.ui'),
-        #     # 4. 패키지 리소스 디렉토리
-        #     os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'resource', 'waist_control.ui'),
-        # ]
-
-        # # 각 경로를 시도하여 존재하는 첫 번째 경로 사용
-        # for path in candidate_paths:
-        #     if os.path.exists(path):
-        #         ui_file = path
-        #         self.node.get_logger().info(f"UI 파일을 찾았습니다: {ui_file}")
-        #         break
 
         if ui_file is None:
             raise FileNotFoundError("waist_control.ui 파일을 찾을 수 없습니다. 설치가 올바르게 되었는지 확인하세요.")
@@ -171,7 +156,6 @@ class WaistControlPlugin(Plugin):
         self._widget.apply_button.clicked.connect(self.apply_settings)
         self._widget.emergency_stop_button.clicked.connect(self.emergency_stop)
         self._widget.intention_button.clicked.connect(self.toggle_intention)
-        self._widget.angle_threshold_spin.valueChanged.connect(self.update_angle_threshold)
 
         # 데이터 로깅 경로 설정
         self.data_logging_path = os.path.expanduser("~/WR_logs")
@@ -399,6 +383,63 @@ class WaistControlPlugin(Plugin):
             self._widget.pwm_graph_frame.setLayout(QVBoxLayout())
             self._widget.displacement_graph_frame.setLayout(QVBoxLayout())
 
+    def collect_data_for_graph(self):
+        """
+        그래프용 데이터를 주기적으로 수집하는 함수
+        """
+        # 그래프 활성화 상태가 아니면 데이터 수집 생략
+        if not self.is_plotting or not hasattr(self, 'start_time') or self.start_time is None:
+            return
+
+        try:
+            current_time = datetime.datetime.now()
+            elapsed_time = (current_time - self.start_time).total_seconds()
+
+            # 데이터 락 획득 후 일괄 처리
+            with self.data_lock:
+                # 현재 시점의 모든 센서 데이터를 한번에 기록
+                self.time_data.append(elapsed_time)
+
+                # 변위 센서값과 임계값
+                self.displacement_data.append(self.displacement)
+                self.threshold_data.append(self.applied_angle_threshold)
+
+                # 온도 데이터 (4번, 5번 구동기)
+                temp_4 = self.temperatures[4] if len(self.temperatures) > 4 else 0.0
+                temp_5 = self.temperatures[5] if len(self.temperatures) > 5 else 0.0
+                self.temp_data_4.append(temp_4)
+                self.temp_data_5.append(temp_5)
+
+                # 목표 온도
+                self.target_temp_data.append(self.applied_target_temp)
+
+                # PWM 값
+                pwm_4 = self.pwm_values[4] if len(self.pwm_values) > 4 else 0
+                pwm_5 = self.pwm_values[5] if len(self.pwm_values) > 5 else 0
+                self.pwm_data_4.append(pwm_4)
+                self.pwm_data_5.append(pwm_5)
+
+                # 버퍼 크기 제한 (5분 = 300초 기준)
+                max_age = 300.0  # 5분
+                while self.time_data and (elapsed_time - self.time_data[0]) > max_age:
+                    self.time_data.pop(0)
+                    self.displacement_data.pop(0)
+                    self.threshold_data.pop(0)
+                    self.temp_data_4.pop(0)
+                    self.temp_data_5.pop(0)
+                    self.target_temp_data.pop(0)
+                    self.pwm_data_4.pop(0)
+                    self.pwm_data_5.pop(0)
+
+                # 주기적으로 로그 출력 (1000개 데이터 포인트마다)
+                if len(self.time_data) % 1000 == 0:
+                    self.node.get_logger().info(f"데이터 개수: {len(self.time_data)}, 시간 범위: {elapsed_time - self.time_data[0]:.2f}초")
+
+        except Exception as e:
+            import traceback
+            self.node.get_logger().error(f"그래프 데이터 수집 오류: {str(e)}")
+            self.node.get_logger().error(traceback.format_exc())
+
     def update_ui(self):
         """
         UI를 업데이트하는 함수 (Qt 타이머에서 호출)
@@ -427,8 +468,7 @@ class WaistControlPlugin(Plugin):
             self._widget.intention_button.setText("의도 OFF" if self.current_intention else "의도 ON")
 
             # 허리 보조 상태 표시
-            is_active = self.current_intention != 0 and self.displacement > self.angle_threshold
-            if is_active:
+            if self.is_active:
                 self._widget.activation_status_label.setText("활성화됨")
                 self._widget.activation_status_label.setStyleSheet("color: green; font-weight: bold;")
             else:
@@ -598,120 +638,38 @@ class WaistControlPlugin(Plugin):
 
     def temp_callback(self, msg):
         """
-        온도 데이터 수신 콜백
+        온도 데이터 수신 콜백 - 데이터 저장만 수행
         """
         try:
-            # 모든 구동기 온도 저장
+            # 단순히 현재 온도값만 저장
             self.temperatures = list(msg.temperature)
 
-            # 그래프 데이터 수집 (그래프 활성화 상태일 때만)
-            if self.is_plotting and hasattr(self, 'start_time') and self.start_time is not None:
-                current_time = datetime.datetime.now()
-                elapsed_time = (current_time - self.start_time).total_seconds()
-
-                # 데이터 락 획득 후 배열 수정
-                with self.data_lock:
-                    self.time_data.append(elapsed_time)
-
-                    # 구동기 4번, 5번 온도 저장
-                    temp_4 = msg.temperature[4] if len(msg.temperature) > 4 else 0.0
-                    temp_5 = msg.temperature[5] if len(msg.temperature) > 5 else 0.0
-                    self.temp_data_4.append(temp_4)
-                    self.temp_data_5.append(temp_5)
-
-                    # 목표 온도 (현재 UI에 표시된 값)
-                    target_temp = self._widget.target_temp_spin.value()
-                    self.target_temp_data.append(target_temp)
-
-                    # 변위 센서 값과 임계값 (이미 저장되어 있으면 해당 값 사용, 아니면 현재 값)
-                    if len(self.displacement_data) < len(self.time_data):
-                        self.displacement_data.append(self.displacement)
-                    if len(self.threshold_data) < len(self.time_data):
-                        self.threshold_data.append(self.angle_threshold)
-
-                    # PWM 값 (현재 저장된 값)
-                    pwm_4 = self.pwm_values[4] if len(self.pwm_values) > 4 else 0
-                    pwm_5 = self.pwm_values[5] if len(self.pwm_values) > 5 else 0
-                    self.pwm_data_4.append(pwm_4)
-                    self.pwm_data_5.append(pwm_5)
-
-                    # 버퍼 크기 제한 (5분 = 300초 기준)
-                    max_age = 300.0  # 5분
-                    while self.time_data and (elapsed_time - self.time_data[0]) > max_age:
-                        self.time_data.pop(0)
-                        self.displacement_data.pop(0)
-                        self.threshold_data.pop(0)
-                        self.temp_data_4.pop(0)
-                        self.temp_data_5.pop(0)
-                        self.target_temp_data.pop(0)
-                        self.pwm_data_4.pop(0)
-                        self.pwm_data_5.pop(0)
-
-                    # 로그 출력
-                    if len(self.time_data) % 1000 == 0:  # 1000개마다 로그 출력
-                        self.node.get_logger().info(f"데이터 개수: {len(self.time_data)}, 시간 범위: {elapsed_time - self.time_data[0]:.2f}초")
+            # 로그 출력 (디버그 레벨로만)
+            self.node.get_logger().debug(f'온도 데이터 수신: 4번={self.temperatures[4] if len(self.temperatures) > 4 else 0}, '
+                                        f'5번={self.temperatures[5] if len(self.temperatures) > 5 else 0}')
         except Exception as e:
-            import traceback
             self.node.get_logger().error(f'온도 데이터 처리 오류: {str(e)}')
-            self.node.get_logger().error(traceback.format_exc())
 
     def pwm_callback(self, msg):
         """
-        현재 PWM 상태 수신 콜백
+        현재 PWM 상태 수신 콜백 - 데이터 저장만 수행
         """
         try:
-            # 모든 구동기 PWM 값 저장
+            # 단순히 현재 PWM 값만 저장
             self.pwm_values = list(msg.pwm)
-            # 로그 출력은 디버그 레벨로만 (정보량이 많음)
-            self.node.get_logger().debug(f'구동기 PWM: 4번={self.pwm_values[4] if len(self.pwm_values) > 4 else 0}, '
-                                        f'5번={self.pwm_values[5] if len(self.pwm_values) > 5 else 0}')
+            #self.node.get_logger().debug(f'PWM 데이터 수신: 4번={self.pwm_values[4] if len(self.pwm_values) > 4 else 0}, 'f'5번={self.pwm_values[5] if len(self.pwm_values) > 5 else 0}')
         except Exception as e:
             self.node.get_logger().error(f'PWM 데이터 처리 오류: {str(e)}')
 
     def displacement_callback(self, msg):
         """
-        변위 센서 데이터 수신 콜백
+        변위 센서 데이터 수신 콜백 - 데이터 저장만 수행
         """
         try:
-            # 변위 센서 데이터 저장 (0번 센서 = 허리 각도)
+            # 단순히 현재 변위값만 저장
             if len(msg.displacement) > 0:
-                # 0번 센서 사용 (변위 센서 인덱스는 UI에서 설정 불필요)
                 self.displacement = msg.displacement[0]
-                self.node.get_logger().debug(f'허리 변위 센서: {self.displacement:.3f}')
-
-                # 그래프 데이터 수집 (그래프 활성화 상태일 때만)
-                if self.is_plotting and hasattr(self, 'start_time') and self.start_time is not None:
-                    current_time = datetime.datetime.now()
-                    elapsed_time = (current_time - self.start_time).total_seconds()
-
-                    # 데이터 락 획득 후 배열 수정
-                    with self.data_lock:
-                        # 타임스탬프가 이미 있는지 확인 (온도 콜백이 먼저 실행되었을 수 있음)
-                        if not self.time_data or elapsed_time - self.time_data[-1] > 0.01:  # 10ms 이상 차이가 나면 새 타임스탬프 추가
-                            self.time_data.append(elapsed_time)
-                            # 다른 데이터들도 함께 추가
-                            self.displacement_data.append(self.displacement)
-                            self.threshold_data.append(self.angle_threshold)
-
-                            # 온도 데이터
-                            temp_4 = self.temperatures[4] if len(self.temperatures) > 4 else 0.0
-                            temp_5 = self.temperatures[5] if len(self.temperatures) > 5 else 0.0
-                            self.temp_data_4.append(temp_4)
-                            self.temp_data_5.append(temp_5)
-
-                            # 목표 온도
-                            target_temp = self._widget.target_temp_spin.value()
-                            self.target_temp_data.append(target_temp)
-
-                            # PWM 값
-                            pwm_4 = self.pwm_values[4] if len(self.pwm_values) > 4 else 0
-                            pwm_5 = self.pwm_values[5] if len(self.pwm_values) > 5 else 0
-                            self.pwm_data_4.append(pwm_4)
-                            self.pwm_data_5.append(pwm_5)
-                        else:
-                            # 기존 타임스탬프에 데이터만 업데이트
-                            self.displacement_data[-1] = self.displacement
-                            self.threshold_data[-1] = self.angle_threshold
+                #self.node.get_logger().debug(f'변위 센서 데이터 수신: {self.displacement:.3f}')
         except Exception as e:
             self.node.get_logger().error(f'변위 데이터 처리 오류: {str(e)}')
 
@@ -737,12 +695,43 @@ class WaistControlPlugin(Plugin):
         except Exception as e:
             self.node.get_logger().error(f'의도 설정 오류: {str(e)}')
 
-    def update_angle_threshold(self, value):
+    def apply_settings(self):
+        """현재 UI 설정에 따라 제어 명령 발행"""
+        if self.is_emergency_stop:
+            self.node.get_logger().warn('비상 정지 중입니다. 제어 명령이 무시됩니다.')
+            return  # 비상 정지 중에는 명령 무시
+
+        try:
+            # 목표 온도 설정값 발행
+            target_temp = self._widget.target_temp_spin.value()
+            self.publish_target_temperature(target_temp)
+
+            # 적용된 값 업데이트
+            self.applied_target_temp = target_temp
+
+            # 임계값 업데이트
+            threshold_value = self._widget.angle_threshold_spin.value()
+            self.applied_angle_threshold = threshold_value
+            self.applied_angle_threshold = threshold_value  # 내부 작업용 변수도 함께 업데이트
+
+            self._widget.status_label.setText(f'목표 온도 {target_temp:.2f}°C, 임계값 {threshold_value:.2f}로 설정')
+            self.node.get_logger().info(f'설정 적용: 목표 온도={target_temp:.2f}°C, 임계값={threshold_value:.2f}')
+        except Exception as e:
+            self.node.get_logger().error(f'설정 적용 오류: {str(e)}')
+            self._widget.status_label.setText(f'설정 적용 오류: {str(e)}')
+
+    def publish_target_temperature(self, target_temp):
         """
-        허리 각도 임계값 업데이트
+        목표 온도 설정 메시지 발행
         """
-        self.angle_threshold = value
-        self.node.get_logger().info(f'허리 임계값이 {value:.2f}로 변경되었습니다')
+        try:
+            # 단일 값을 Float64 메시지로 발행
+            msg = std_msgs.msg.Float64()
+            msg.data = float(target_temp)
+            self.target_temp_pub.publish(msg)
+            self.node.get_logger().info(f'목표 온도 설정 메시지 발행: {target_temp:.2f}°C')
+        except Exception as e:
+            self.node.get_logger().error(f'목표 온도 발행 오류: {str(e)}')
 
     def start_plotting(self):
         """
@@ -767,23 +756,20 @@ class WaistControlPlugin(Plugin):
         self._widget.status_label.setText("그래프 플로팅이 시작되었습니다")
         self.node.get_logger().info("그래프 플로팅이 시작되었습니다")
 
-        # 초기 데이터 추가
+        # 초기 데이터 추가 - 단순화된 버전
         with self.data_lock:
             self.time_data = [0.0]
-
-            # 변위 센서 초기값
             self.displacement_data = [self.displacement]
-            self.threshold_data = [self.angle_threshold]
+            self.threshold_data = [self.applied_angle_threshold]
 
-            # 구동기 4번, 5번 온도 초기값
+            # 현재 저장된 센서값으로 초기화
             temp_4 = self.temperatures[4] if len(self.temperatures) > 4 else 0.0
             temp_5 = self.temperatures[5] if len(self.temperatures) > 5 else 0.0
             self.temp_data_4 = [temp_4]
             self.temp_data_5 = [temp_5]
 
             # 목표 온도 초기값
-            target_temp = self._widget.target_temp_spin.value()
-            self.target_temp_data = [target_temp]
+            self.target_temp_data = [self.applied_target_temp]
 
             # PWM 초기값
             pwm_4 = self.pwm_values[4] if len(self.pwm_values) > 4 else 0
@@ -881,10 +867,41 @@ class WaistControlPlugin(Plugin):
         """
         허리 보조 시스템 활성화 상태 확인
         """
-        # 활성화 조건 검사: 의도가 0이 아니고 허리 값이 임계값 초과
-        is_active = self.current_intention != 0 and self.displacement > self.angle_threshold
+        # 활성화 조건 검사
+        new_active_state = self.current_intention != 0 and self.displacement > self.applied_angle_threshold
 
-        # 상태를 활성화 라벨에 반영 (UI 업데이트 함수에서 처리)
+        # 상태가 변경되었을 때만 처리
+        if new_active_state != self.is_active:
+            self.is_active = new_active_state
+            mode_str = "자동 온도제어" if self.is_active else "수동 PWM 제어"
+            self.node.get_logger().info(f"활성화 상태 변경: {self.is_active}")
+
+            if self.control_mode_client.service_is_ready():
+                # 서비스 요청 생성
+                request = SetControlMode.Request()
+                request.auto_mode = self.is_active  # 활성화 상태에 따라 자동/수동 모드 설정
+                request.actuator_id = -1  # -1은 모든 구동기를 의미
+
+                # 비동기 서비스 호출
+                self.node.get_logger().info(f"서비스 호출: set_control_mode, auto_mode={self.is_active}")
+                future = self.control_mode_client.call_async(request)
+                future.add_done_callback(self.handle_control_mode_response)
+            else:
+                self.node.get_logger().warn("제어 모드 서비스가 준비되지 않았습니다. 상태 변경이 적용되지 않습니다.")
+
+    def handle_control_mode_response(self, future):
+        """제어 모드 서비스 응답 처리"""
+        try:
+            response = future.result()
+            if response.success:
+                mode_str = "자동 온도 제어" if self.is_active else "수동 PWM 제어"
+                self.node.get_logger().info(f"제어 모드 변경 성공: {mode_str}")
+                self._widget.status_label.setText(f"제어 모드가 {mode_str}로 변경되었습니다")
+            else:
+                self.node.get_logger().error(f"제어 모드 변경 실패: {response.message}")
+                self._widget.status_label.setText(f"제어 모드 변경 실패: {response.message}")
+        except Exception as e:
+            self.node.get_logger().error(f"제어 모드 서비스 호출 오류: {str(e)}")
 
     def _show_temperature_warning(self, temp_4, temp_5):
         """
@@ -900,40 +917,6 @@ class WaistControlPlugin(Plugin):
                                        f"비상 정지가 활성화되었습니다.")
         warning_msg.setStandardButtons(QMessageBox.Ok)
         warning_msg.exec_()
-
-    def apply_settings(self):
-        """현재 UI 설정에 따라 제어 명령 발행"""
-        if self.is_emergency_stop:
-            self.node.get_logger().warn('비상 정지 중입니다. 제어 명령이 무시됩니다.')
-            return  # 비상 정지 중에는 명령 무시
-
-        try:
-            # 목표 온도 설정값 발행
-            target_temp = self._widget.target_temp_spin.value()
-            self.publish_target_temperature(target_temp)
-
-            # 임계값 업데이트
-            threshold_value = self._widget.angle_threshold_spin.value()
-            self.angle_threshold = threshold_value
-
-            self._widget.status_label.setText(f'목표 온도 {target_temp:.2f}°C, 임계값 {threshold_value:.2f}로 설정')
-            self.node.get_logger().info(f'설정 적용: 목표 온도={target_temp:.2f}°C, 임계값={threshold_value:.2f}')
-        except Exception as e:
-            self.node.get_logger().error(f'설정 적용 오류: {str(e)}')
-            self._widget.status_label.setText(f'설정 적용 오류: {str(e)}')
-
-    def publish_target_temperature(self, target_temp):
-        """
-        목표 온도 설정 메시지 발행
-        """
-        try:
-            # 단일 값을 Float64 메시지로 발행
-            msg = std_msgs.msg.Float64()
-            msg.data = float(target_temp)
-            self.target_temp_pub.publish(msg)
-            self.node.get_logger().info(f'목표 온도 설정 메시지 발행: {target_temp:.2f}°C')
-        except Exception as e:
-            self.node.get_logger().error(f'목표 온도 발행 오류: {str(e)}')
 
     def emergency_stop(self):
         """비상 정지 버튼 이벤트 처리 - 서비스 호출 방식으로 변경"""
@@ -1083,6 +1066,20 @@ class WaistControlPlugin(Plugin):
         else:
             self._widget.service_status_label.setText("모든 서비스 연결됨")
             self._widget.service_status_label.setStyleSheet("color: green;")
+
+        if all(self.service_availability.values()) and not hasattr(self, 'initial_state_sent'):
+            # 초기 제어 모드 설정 (기본값은 활성화 상태에 따라)
+            request = SetControlMode.Request()
+            request.auto_mode = self.is_active  # 현재 활성화 상태에 맞게 설정
+            request.actuator_id = -1  # 모든 구동기
+
+            # 비동기 서비스 호출
+            future = self.control_mode_client.call_async(request)
+            future.add_done_callback(self.handle_control_mode_response)
+
+            # 초기 상태 설정 완료 표시
+            self.initial_state_sent = True
+            self.node.get_logger().info("초기 제어 모드가 설정되었습니다")
 
         # 로그로 서비스 가용성 출력
         self.node.get_logger().debug(

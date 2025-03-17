@@ -109,6 +109,9 @@ private:
             uint16_t raw_temp = (static_cast<uint16_t>(msg->data[data_index + 1]) << 8) |
                                 static_cast<uint16_t>(msg->data[data_index]);
             temp_msg.temperature[i] = static_cast<float>(raw_temp) * 0.25f;
+            if (temp_msg.temperature[i] > 500.0f) {
+                temp_msg.temperature[i] = 0.0f;
+            }
         }
 
         // 메시지 발행
